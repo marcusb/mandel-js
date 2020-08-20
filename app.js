@@ -5,13 +5,22 @@ const ITER = 500;
 paramGen = () => 15 * (1 + 2 * Math.random());
 const [fRed, fGreen, fBlue] = [paramGen(), paramGen(), paramGen()];
 
+// history navigation
+navigateTo = rect => {
+    history.pushState(rect, "Mandelbrot");
+    mandel(rect);
+}
+window.onpopstate = ev => mandel(ev.state);
+
+// initial frame
 window.onload = () => {
     let [x0, y0] = [-2, -1.5];
     let [x1, y1] = [1, 1.5];
-    mandel(x0, y0, x1, y1);
+    navigateTo([x0, y0, x1, y1]);
 };
 
-mandel = (x0, y0, x1, y1) => {
+mandel = rect => {
+    let [x0, y0, x1, y1] = rect;
     const canvas = document.getElementById('canvas');
     const posDiv = document.getElementById('pos');
     const ctx = canvas.getContext('2d');
@@ -49,7 +58,7 @@ mandel = (x0, y0, x1, y1) => {
             t0 = t1;
             t1 = tmp;
         }
-        mandel(s0, t0, s1, t1);
+        navigateTo([s0, t0, s1, t1]);
     };
 
     let yy = y1;
