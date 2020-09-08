@@ -1,0 +1,10 @@
+div#sel {
+    display: none;
+    border: 2px solid gray;
+}
+
+div#sel.enabled {
+    z-index: 10;
+    display: block;
+    position: absolute;
+}
