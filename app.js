@@ -23,6 +23,8 @@ mandel = rect => {
     let [x0, y0, x1, y1] = rect;
     const canvas = document.getElementById('canvas');
     const posDiv = document.getElementById('pos');
+    const selDiv = document.getElementById('sel');
+    const container = document.getElementById('container');
     const ctx = canvas.getContext('2d');
     let imgData = ctx.createImageData(N, N);
     let data = imgData.data;
@@ -30,35 +32,41 @@ mandel = rect => {
     const dx = (x1 - x0)/N;
     const dy = (y1 - y0)/N;
 
-    coords = ev => [
-        x0 + (ev.clientX - canvas.offsetLeft) * dx,
-        y1 - (ev.clientY - canvas.offsetTop) * dy
-    ];
-
-    canvas.onmousemove = ev => {
-        let [x, y] = coords(ev);
-        posDiv.textContent = roundCoord(x) + " " + (y > 0 ? "+" : "-") + " " + roundCoord(Math.abs(y)) + "i";
+    coords = (x, y) => {
+        return [
+            x0 + (x - canvas.offsetLeft) * dx,
+            y1 - (y - canvas.offsetTop) * dy
+        ]
     };
 
     // selection
-    let selStart;
+    let selPos;
     canvas.onmousedown = ev => {
-        selStart = coords(ev);
+        selPos = [ev.clientX, ev.clientY];
+        selDiv.classList.add("enabled");
+        selDiv.style.left = ev.offsetX + canvas.offsetLeft;
+        selDiv.style.top = ev.offsetY + canvas.offsetTop;
+        selDiv.style.width = 0;
+        selDiv.style.height = 0;
     };
-    canvas.onmouseup = ev => {
-        let [s0, t0] = selStart;
-        let [s1, t1] = coords(ev);
-        // ensure s0 < s1 and t0 < t1
-        if (s1 < s0) {
-            [s0, t0] = [s1, t1];
-            [s1, t1] = selStart;
+    container.onmousemove = ev => {
+        let [x, y] = coords(ev.clientX, ev.clientY);
+        posDiv.textContent = roundCoord(x) + " " + (y > 0 ? "+" : "-") + " " + roundCoord(Math.abs(y)) + "i";
+        if (selPos) {
+            let [left, top] = selPos;
+            let right = ev.offsetX + ev.target.offsetLeft;
+            let bottom = ev.offsetY + ev.target.offsetTop;
+            selDiv.style.width = right - left;
+            selDiv.style.height = bottom - top;
         }
-        if (t1 < t0) {
-            let tmp = t0;
-            t0 = t1;
-            t1 = tmp;
-        }
-        navigateTo([s0, t0, s1, t1]);
+    };
+    container.onmouseup = ev => {
+        let rect = selDiv.getBoundingClientRect();
+        let [x0, y0] = coords(rect.left, rect.top);
+        let [x1, y1] = coords(rect.right, rect.bottom);
+        selDiv.classList.remove("enabled");
+        selPos = null;
+        navigateTo([x0, y0, x1, y1]);
     };
 
     let yy = y1;
