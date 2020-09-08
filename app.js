@@ -1,5 +1,5 @@
 const N = 1000;
-const ITER = 500;
+const ITER = 1000;
 
 // color randomization parameters
 paramGen = () => 15 * (1 + 2 * Math.random());
