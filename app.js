@@ -56,8 +56,9 @@ mandel = rect => {
             let [left, top] = selPos;
             let right = ev.offsetX + ev.target.offsetLeft;
             let bottom = ev.offsetY + ev.target.offsetTop;
-            selDiv.style.width = right - left;
-            selDiv.style.height = bottom - top;
+            let size = Math.min(right - left, bottom - top);
+            selDiv.style.width = size;
+            selDiv.style.height = size;
         }
     };
     container.onmouseup = ev => {
