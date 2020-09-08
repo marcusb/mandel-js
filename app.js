@@ -70,50 +70,56 @@ mandel = rect => {
         navigateTo([x0, y0, x1, y1]);
     };
 
-    let yy = y1;
+    let y = y1;
     let idx = 0;
     
     let startTime = Date.now();
-    for (y = 0; y < N; y++) {
-        let xx = x0;
-        for (x = 0; x < N; x++) {
-            let s = 0;
-            let d = 0;
-            let p = 0;
+    for (j = 0; j < N; j++) {
+        let x = x0;
+        for (k = 0; k < N; k++) {
+            // z = a + bi
+            // w = x + y i
+            // The update is z := z^2 + w
+            // We save some multiplications by also storing
+            //   aa = a*a
+            //   bb = b*b
+            // so they can be re-used in the following round.
+            let a = 0;
+            let b = 0;
+            let aa = 0;
+            let bb = 0;
+            let tmp;
             for (i = 0; i < ITER; i++) {
-                let sd = s*d;
-                let u = sd + xx;
-                let v = p + yy;
-                s = u + v;
-                d = u - v;
-                let a = (s + d) / 2;
-                let b = (s - d) / 2;
-                let aa = a * a;
-                if (aa >  10) {
+                tmp = aa - bb + x;
+                b = 2*a*b + y;
+                a = tmp;
+                aa = a * a;
+                if (aa > 10) {
                     break;
                 }
-                let bb = b * b;
+                bb = b * b;
                 if (aa + bb > 10) {
                     break;
                 }
-                p = 2 * a * b;
             }
             if (i < ITER) {
+                // We escaped, color the point accordingly
                 let c = 2 * (i / ITER) - 1;
                 data[idx] = Math.sin(c * fRed) * 128 + 127;
                 data[idx + 1] = Math.sin(c * fGreen) * 128 + 127;
                 data[idx + 2] = Math.sin(c * fBlue) * 128 + 127;
                 data[idx + 3] = 255;
             } else {
+                // We are in the Mandelbrot set, color black
                 data[idx] = 0;
                 data[idx + 1] = 0;
                 data[idx + 2] = 0;
                 data[idx + 3] = 255;
             }
             idx += 4;
-            xx += dx;
+            x += dx;
         }
-        yy -= dy;
+        y -= dy;
     }
     console.log("computed in " + (Date.now() - startTime) / 1000 + "s");
 
