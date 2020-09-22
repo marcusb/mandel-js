@@ -32,17 +32,12 @@ mandel = rect => {
     const dx = (x1 - x0)/N;
     const dy = (y1 - y0)/N;
 
-    coords = (x, y) => {
-        return [
-            x0 + (x - canvas.offsetLeft) * dx,
-            y1 - (y - canvas.offsetTop) * dy
-        ]
-    };
+    coords = (x, y) => [x0 + x * dx, y1 - y * dy];
 
     // selection
     let selPos;
     canvas.onmousedown = ev => {
-        selPos = [ev.clientX, ev.clientY];
+        selPos = [ev.offsetX, ev.offsetY];
         selDiv.classList.add("enabled");
         selDiv.style.left = ev.offsetX + canvas.offsetLeft;
         selDiv.style.top = ev.offsetY + canvas.offsetTop;
@@ -50,7 +45,7 @@ mandel = rect => {
         selDiv.style.height = 0;
     };
     container.onmousemove = ev => {
-        let [x, y] = coords(ev.clientX, ev.clientY);
+        let [x, y] = coords(ev.offsetX, ev.offsetY);
         posDiv.textContent = roundCoord(x) + " " + (y > 0 ? "+" : "-") + " " + roundCoord(Math.abs(y)) + "i";
         if (selPos) {
             let [left, top] = selPos;
@@ -63,8 +58,8 @@ mandel = rect => {
     };
     container.onmouseup = ev => {
         let rect = selDiv.getBoundingClientRect();
-        let [x0, y0] = coords(rect.left, rect.top);
-        let [x1, y1] = coords(rect.right, rect.bottom);
+        let [x0, y0] = coords(rect.left + window.scrollX - canvas.offsetLeft, rect.top + window.scrollY - canvas.offsetTop);
+        let [x1, y1] = coords(rect.right + window.scrollX - canvas.offsetLeft + window.scrollX, rect.bottom + window.scrollY - canvas.offsetTop);
         selDiv.classList.remove("enabled");
         selPos = null;
         navigateTo([x0, y0, x1, y1]);
