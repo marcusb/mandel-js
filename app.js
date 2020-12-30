@@ -1,5 +1,23 @@
-const N = 1000;
+const N = 1024;
 const ITER = 1000;
+
+// create the thread pool
+const numWorkers = navigator.hardwareConcurrency || 4;
+// We divide the work into tasks by chunks, which are horizontal bands, for
+// concurrent processing. The black parts take the most computation time,
+// so to decrease variance in load distribution between threads (and avoid
+// waiting for slow tasks), we use more chunks than workers, and portion
+// them out to workers in an interleaved fashion.
+const numChunks = Math.max(numWorkers * numWorkers, 64);
+const rowsPerChunk = N / numChunks;
+const bytesPerChunk = 4 * N * rowsPerChunk;
+const workerPool = [];
+for (i = 0; i < numWorkers; i++) {
+    workerPool.push(new Worker("worker.js"));
+}
+
+console.log("cross-origin isolated: ", window.crossOriginIsolated);
+console.log("secure context:", window.isSecureContext);
 
 // color randomization parameters
 paramGen = () => 15 * (1 + 2 * Math.random());
@@ -26,8 +44,6 @@ mandel = rect => {
     const selDiv = document.getElementById('sel');
     const container = document.getElementById('container');
     const ctx = canvas.getContext('2d');
-    let imgData = ctx.createImageData(N, N);
-    let data = imgData.data;
 
     const dx = (x1 - x0)/N;
     const dy = (y1 - y0)/N;
@@ -65,60 +81,41 @@ mandel = rect => {
         navigateTo([x0, y0, x1, y1]);
     };
 
-    let y = y1;
-    let idx = 0;
-    
-    let startTime = Date.now();
-    for (j = 0; j < N; j++) {
-        let x = x0;
-        for (k = 0; k < N; k++) {
-            // z = a + bi
-            // w = x + y i
-            // The update is z := z^2 + w
-            // We save some multiplications by also storing
-            //   aa = a*a
-            //   bb = b*b
-            // so they can be re-used in the following round.
-            let a = 0;
-            let b = 0;
-            let aa = 0;
-            let bb = 0;
-            let tmp;
-            for (i = 0; i < ITER; i++) {
-                tmp = aa - bb + x;
-                b = 2*a*b + y;
-                a = tmp;
-                aa = a * a;
-                if (aa > 10) {
-                    break;
-                }
-                bb = b * b;
-                if (aa + bb > 10) {
-                    break;
-                }
-            }
-            if (i < ITER) {
-                // We escaped, color the point accordingly
-                let c = 2 * (i / ITER) - 1;
-                data[idx] = Math.sin(c * fRed) * 128 + 127;
-                data[idx + 1] = Math.sin(c * fGreen) * 128 + 127;
-                data[idx + 2] = Math.sin(c * fBlue) * 128 + 127;
-                data[idx + 3] = 255;
-            } else {
-                // We are in the Mandelbrot set, color black
-                data[idx] = 0;
-                data[idx + 1] = 0;
-                data[idx + 2] = 0;
-                data[idx + 3] = 255;
-            }
-            idx += 4;
-            x += dx;
-        }
-        y -= dy;
-    }
-    console.log("computed in " + (Date.now() - startTime) / 1000 + "s");
+    let sharedBuffer = new SharedArrayBuffer(4*N*N);
 
-    ctx.putImageData(imgData, 0, 0);
+    let paint = () => {
+        // Using a SharedArrayBuffer as ImageData array is not allowed, so we need to make a copy
+        let data = new Uint8ClampedArray(sharedBuffer);
+        let arr = new Uint8ClampedArray(data.length);
+        arr.set(data);
+        let imgData = new ImageData(arr, N);
+        ctx.putImageData(imgData, 0, 0);
+    };
+
+    let done = 0;
+    const startTime = performance.now();
+    workerPool.forEach((worker, i) => {
+        worker.onmessage = e => {
+            let [taskId, elapsed] = e.data;
+            console.log("[t=", Math.round(performance.now() - startTime), "] worker", i,
+                ", task", taskId, " done in", Math.round(elapsed), "ms");
+            done++;
+            if (done == numChunks) {
+                // all tasks have finished, draw the image
+                const t = performance.now();
+                console.log("computed in " + (t - startTime) / 1000 + "s");
+                paint();
+            }
+        }
+    });
+    let y = y1;
+    for (i = 0; i < numChunks; i++) {
+        let workerIdx = i % numWorkers;
+        let worker = workerPool[workerIdx];
+        const buf = new Uint8ClampedArray(sharedBuffer, i * bytesPerChunk, bytesPerChunk);
+        worker.postMessage([i, buf, N, rowsPerChunk, x0, y, dx, dy, ITER, fRed, fGreen, fBlue]);
+        y -= rowsPerChunk * dy;
+    }
 };
 
 roundCoord = x => Math.round(x * 1000) / 1000;

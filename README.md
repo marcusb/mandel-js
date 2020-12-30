@@ -2,7 +2,9 @@
 
 Simple web-based Mandelbrot set explorer. This was written as a fun teaching exercise.
 
-Try it out [here](https://marcusb.github.io/mandel-js/)!
+It uses web workers for parallelization, so you can put those CPU cores to use!
+
+Try it out [here](https://dlbk35kw7uw7f.cloudfront.net/)!
 
 ## Features
 
