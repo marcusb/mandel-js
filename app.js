@@ -56,34 +56,47 @@ mandel = rect => {
 
     // selection
     let selPos;
-    canvas.onmousedown = ev => {
-        selPos = [ev.offsetX, ev.offsetY];
+    let selectionStart = (x, y) => {
+        // (x, y) relative to canvas
+        selPos = [x, y];
         selDiv.classList.add("enabled");
-        selDiv.style.left = ev.offsetX + canvas.offsetLeft;
-        selDiv.style.top = ev.offsetY + canvas.offsetTop;
+        selDiv.style.left = x + canvas.offsetLeft;
+        selDiv.style.top = y + canvas.offsetTop;
         selDiv.style.width = 0;
         selDiv.style.height = 0;
     };
-    container.onmousemove = ev => {
-        let [x, y] = coords(ev.offsetX, ev.offsetY);
-        posDiv.textContent = roundCoord(x) + " " + (y > 0 ? "+" : "-") + " " + roundCoord(Math.abs(y)) + "i";
+    let selectionMove = (x, y) => {
+        let [a, b] = coords(x, y);
+        posDiv.textContent = roundCoord(a) + " " + (b > 0 ? "+" : "-") + " " + roundCoord(Math.abs(b)) + "i";
         if (selPos) {
             let [left, top] = selPos;
-            let right = ev.offsetX + ev.target.offsetLeft;
-            let bottom = ev.offsetY + ev.target.offsetTop;
-            let size = Math.min(right - left, bottom - top);
+            let size = Math.min(x - left, y - top);
             selDiv.style.width = size;
             selDiv.style.height = size;
         }
     };
-    container.onmouseup = ev => {
+    let selectionEnd = () => {
         let rect = selDiv.getBoundingClientRect();
-        let [x0, y0] = coords(rect.left + window.scrollX - canvas.offsetLeft, rect.top + window.scrollY - canvas.offsetTop);
-        let [x1, y1] = coords(rect.right + window.scrollX - canvas.offsetLeft + window.scrollX, rect.bottom + window.scrollY - canvas.offsetTop);
+        let [x0, y0] = coords(rect.left + window.scrollX - canvas.offsetLeft, rect.bottom + window.scrollY - canvas.offsetTop);
+        let [x1, y1] = coords(rect.right + window.scrollX - canvas.offsetLeft + window.scrollX, rect.top + window.scrollY - canvas.offsetTop);
         selDiv.classList.remove("enabled");
         selPos = null;
         navigateTo([x0, y0, x1, y1]);
     };
+    canvas.onmousedown = ev => selectionStart(ev.offsetX, ev.offsetY);
+    container.onmousemove = ev =>
+        selectionMove(ev.offsetX + ev.target.offsetLeft - canvas.offsetLeft,
+            ev.offsetY + ev.target.offsetTop - canvas.offsetTop);
+    container.onmouseup = selectionEnd;
+    canvas.ontouchstart = ev => {
+        let t = ev.targetTouches[0];
+        selectionStart(t.pageX - canvas.offsetLeft, t.pageY - canvas.offsetTop);
+    };
+    container.ontouchmove = ev => {
+        let t = ev.targetTouches[0];
+        selectionMove(t.pageX - canvas.offsetLeft, t.pageY - canvas.offsetTop);
+    };
+    container.ontouchend = selectionEnd;
 
     let imgBuffer = new ArrayBuffer(imgBufSize);
 
