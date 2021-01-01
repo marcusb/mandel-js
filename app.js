@@ -1,6 +1,8 @@
 const N = 1024;
 const ITER = 1000;
 
+const imgBufSize = 4*N*N;
+
 // create the thread pool
 const numWorkers = navigator.hardwareConcurrency || 4;
 // We divide the work into tasks by chunks, which are horizontal bands, for
@@ -16,7 +18,9 @@ for (i = 0; i < numWorkers; i++) {
     workerPool.push(new Worker("worker.js"));
 }
 
-console.log("cross-origin isolated: ", window.crossOriginIsolated);
+// feature detection
+console.log("has SharedArrayBuffer:", window.SharedArrayBuffer !== undefined);
+console.log("cross-origin isolated:", window.crossOriginIsolated);
 console.log("secure context:", window.isSecureContext);
 
 // color randomization parameters
@@ -81,14 +85,11 @@ mandel = rect => {
         navigateTo([x0, y0, x1, y1]);
     };
 
-    let sharedBuffer = new SharedArrayBuffer(4*N*N);
+    let imgBuffer = new ArrayBuffer(imgBufSize);
 
     let paint = () => {
-        // Using a SharedArrayBuffer as ImageData array is not allowed, so we need to make a copy
-        let data = new Uint8ClampedArray(sharedBuffer);
-        let arr = new Uint8ClampedArray(data.length);
-        arr.set(data);
-        let imgData = new ImageData(arr, N);
+        let data = new Uint8ClampedArray(imgBuffer);
+        let imgData = new ImageData(data, N);
         ctx.putImageData(imgData, 0, 0);
     };
 
@@ -96,9 +97,11 @@ mandel = rect => {
     const startTime = performance.now();
     workerPool.forEach((worker, i) => {
         worker.onmessage = e => {
-            let [taskId, elapsed] = e.data;
+            let [taskId, srcBuf, offset, elapsed] = e.data;
             console.log("[t=", Math.round(performance.now() - startTime), "] worker", i,
                 ", task", taskId, " done in", Math.round(elapsed), "ms");
+            const dst = new Uint8ClampedArray(imgBuffer, offset, bytesPerChunk);
+            dst.set(srcBuf);
             done++;
             if (done == numChunks) {
                 // all tasks have finished, draw the image
@@ -112,8 +115,8 @@ mandel = rect => {
     for (i = 0; i < numChunks; i++) {
         let workerIdx = i % numWorkers;
         let worker = workerPool[workerIdx];
-        const buf = new Uint8ClampedArray(sharedBuffer, i * bytesPerChunk, bytesPerChunk);
-        worker.postMessage([i, buf, N, rowsPerChunk, x0, y, dx, dy, ITER, fRed, fGreen, fBlue]);
+        let offset = i * bytesPerChunk;
+        worker.postMessage([i, offset, bytesPerChunk, N, rowsPerChunk, x0, y, dx, dy, ITER, fRed, fGreen, fBlue]);
         y -= rowsPerChunk * dy;
     }
 };

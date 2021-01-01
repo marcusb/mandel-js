@@ -1,6 +1,7 @@
 onmessage = e => {
     let startTime = performance.now();
-    let [taskId, buf, cols, rows, x0, y, dx, dy, ITER, fRed, fGreen, fBlue] = e.data;
+    let [taskId, ofs, bytesPerChunk, cols, rows, x0, y, dx, dy, ITER, fRed, fGreen, fBlue] = e.data;
+    let buf = new Uint8ClampedArray(bytesPerChunk);
     let idx = 0;
     for (j = 0; j < rows; j++) {
         let x = x0;
@@ -49,5 +50,7 @@ onmessage = e => {
         }
         y -= dy;
     }
-    postMessage([taskId, performance.now() - startTime]);
+    // we need to pass the buffer back only in the non-shared buffer case,
+    // but no big harm in doing it anyway
+    postMessage([taskId, buf, ofs, performance.now() - startTime]);
 }
