@@ -1,15 +1,25 @@
 # mandel-js
 
 Simple web-based Mandelbrot set explorer. This was written as a fun teaching exercise.
+The design goals are speed and small code size, in that order.
 
 It uses web workers for parallelization, so you can put those CPU cores to use!
+The math code is written in WebAssembly.
 
-Try it out [here](https://marcusb.github.io/mandel-js/)!
+Due to the use of browser features like shared memory, it should work on these browsers:
+
+* Firefox 79+
+* Chrome 74+
+* Edge 79+
+
+(It does not work on Chrome Android yet.)
+
+Try it out [here](https://dlbk35kw7uw7f.cloudfront.net/)!
 
 ## Features
 
 * Click and select-and to zoom
-* History navigation - use the Back button if you make a mistake
+* History navigation - use the Back button to navigate where you came from
 * Colors are randomized on load
 
 ## License

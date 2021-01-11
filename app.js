@@ -1,7 +1,17 @@
+// feature detection
+console.log("has SharedArrayBuffer:", window.SharedArrayBuffer !== undefined);
+console.log("cross-origin isolated:", window.crossOriginIsolated);
+console.log("secure context:", window.isSecureContext);
+
 const N = 1024;
 const ITER = 1000;
 
-const imgBufSize = 4*N*N;
+const paletteSize = 4 * (ITER + 1);
+const imgSize = 4 * N * N;
+// image buffer holds the palette and the image data
+const imgBufSize = paletteSize + imgSize;
+const pages = Math.ceil(imgBufSize / (64 * 1024));
+const imgBuffer = new WebAssembly.Memory({initial: pages, maximum: pages, shared: true});
 
 // create the thread pool
 const numWorkers = navigator.hardwareConcurrency || 4;
@@ -14,18 +24,39 @@ const numChunks = Math.max(numWorkers * numWorkers, 64);
 const rowsPerChunk = N / numChunks;
 const bytesPerChunk = 4 * N * rowsPerChunk;
 const workerPool = [];
-for (i = 0; i < numWorkers; i++) {
-    workerPool.push(new Worker("worker.js"));
+
+let initWorkers = wasmModule => {
+    for (i = 0; i < numWorkers; i++) {
+        let worker = new Worker("worker.js");
+        worker.postMessage(['init', [wasmModule, imgBuffer]]);
+        workerPool.push(worker);
+    }
 }
 
-// feature detection
-console.log("has SharedArrayBuffer:", window.SharedArrayBuffer !== undefined);
-console.log("cross-origin isolated:", window.crossOriginIsolated);
-console.log("secure context:", window.isSecureContext);
-
-// color randomization parameters
-paramGen = () => 15 * (1 + 2 * Math.random());
-const [fRed, fGreen, fBlue] = [paramGen(), paramGen(), paramGen()];
+// color palette randomization
+let initPalette = () => {
+    // Use the first part of the memory for the palette. There is one 4-byte
+    // entry for each possible iteration value (r, g, b, alpha).
+    let buf = new Uint8ClampedArray(imgBuffer.buffer, 0, paletteSize);
+    let paramGen = () => 15 * (1 + 2 * Math.random());
+    const [fRed, fGreen, fBlue] = [paramGen(), paramGen(), paramGen()];
+    let ofs = 0;
+    let d = 2 / ITER;
+    let c = -1;
+    for (i = 0; i < ITER; i++) {
+        buf[ofs++] = Math.sin(c * fRed) * 128 + 127;
+        buf[ofs++] = Math.sin(c * fGreen) * 128 + 127;
+        buf[ofs++] = Math.sin(c * fBlue) * 128 + 127;
+        buf[ofs++] = 0xff;
+        c += d;
+    }
+    // last entry for black (i=ITER)
+    buf[ofs++] = 0;
+    buf[ofs++] = 0;
+    buf[ofs++] = 0;
+    buf[ofs++] = 0xff;
+}
+initPalette();
 
 // history navigation
 navigateTo = rect => {
@@ -38,7 +69,11 @@ window.onpopstate = ev => mandel(ev.state);
 window.onload = () => {
     let [x0, y0] = [-2, -1.5];
     let [x1, y1] = [1, 1.5];
-    navigateTo([x0, y0, x1, y1]);
+    WebAssembly.compileStreaming(fetch('mandel.wasm'))
+        .then(mod => {
+            initWorkers(mod);
+            navigateTo([x0, y0, x1, y1]);
+        });
 };
 
 mandel = rect => {
@@ -98,11 +133,10 @@ mandel = rect => {
     };
     container.ontouchend = selectionEnd;
 
-    let imgBuffer = new ArrayBuffer(imgBufSize);
-
     let paint = () => {
-        let data = new Uint8ClampedArray(imgBuffer);
-        let imgData = new ImageData(data, N);
+        let buf = new Uint8ClampedArray(imgBuffer.buffer, paletteSize, imgSize);
+        let imgData = new ImageData(N, N);
+        imgData.data.set(buf);
         ctx.putImageData(imgData, 0, 0);
     };
 
@@ -110,11 +144,11 @@ mandel = rect => {
     const startTime = performance.now();
     workerPool.forEach((worker, i) => {
         worker.onmessage = e => {
-            let [taskId, srcBuf, offset, elapsed] = e.data;
+            let [taskId, elapsed] = e.data;
             console.log("[t=", Math.round(performance.now() - startTime), "] worker", i,
                 ", task", taskId, " done in", Math.round(elapsed), "ms");
-            const dst = new Uint8ClampedArray(imgBuffer, offset, bytesPerChunk);
-            dst.set(srcBuf);
+            //const dst = new Uint8ClampedArray(imgBuffer, offset, bytesPerChunk);
+            //dst.set(srcBuf);
             done++;
             if (done == numChunks) {
                 // all tasks have finished, draw the image
@@ -125,12 +159,13 @@ mandel = rect => {
         }
     });
     let y = y1;
+    let ofs = paletteSize;
     for (i = 0; i < numChunks; i++) {
         let workerIdx = i % numWorkers;
         let worker = workerPool[workerIdx];
-        let offset = i * bytesPerChunk;
-        worker.postMessage([i, offset, bytesPerChunk, N, rowsPerChunk, x0, y, dx, dy, ITER, fRed, fGreen, fBlue]);
+        worker.postMessage(['calc', [i, ofs, N, rowsPerChunk, x0, y, dx, dy, ITER]]);
         y -= rowsPerChunk * dy;
+        ofs += bytesPerChunk;
     }
 };
 
