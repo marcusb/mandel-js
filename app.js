@@ -2,6 +2,7 @@
 console.log("has SharedArrayBuffer:", window.SharedArrayBuffer !== undefined);
 console.log("cross-origin isolated:", window.crossOriginIsolated);
 console.log("secure context:", window.isSecureContext);
+const hasSharedMem = window.crossOriginIsolated && window.SharedArrayBuffer !== undefined;
 
 const N = 1024;
 const ITER = 1000;
@@ -9,9 +10,11 @@ const ITER = 1000;
 const paletteSize = 4 * (ITER + 1);
 const imgSize = 4 * N * N;
 // image buffer holds the palette and the image data
-const imgBufSize = paletteSize + imgSize;
-const pages = Math.ceil(imgBufSize / (64 * 1024));
-const imgBuffer = new WebAssembly.Memory({initial: pages, maximum: pages, shared: true});
+const memorySize = paletteSize + imgSize;
+const pages = Math.ceil(memorySize / (64 * 1024));
+const memory = new WebAssembly.Memory({initial: pages, maximum: pages, shared: hasSharedMem});
+const palette = new Uint8ClampedArray(memory.buffer, 0, paletteSize);
+const imgBuffer = new Uint8ClampedArray(memory.buffer, paletteSize, imgSize);
 
 // create the thread pool
 const numWorkers = navigator.hardwareConcurrency || 4;
@@ -28,35 +31,32 @@ const workerPool = [];
 let initWorkers = wasmModule => {
     for (i = 0; i < numWorkers; i++) {
         let worker = new Worker("worker.js");
-        worker.postMessage(['init', [wasmModule, imgBuffer]]);
+        worker.postMessage(['init', [wasmModule, hasSharedMem || palette, hasSharedMem && memory, bytesPerChunk]]);
         workerPool.push(worker);
     }
 }
 
 // color palette randomization
-let initPalette = () => {
-    // Use the first part of the memory for the palette. There is one 4-byte
-    // entry for each possible iteration value (r, g, b, alpha).
-    let buf = new Uint8ClampedArray(imgBuffer.buffer, 0, paletteSize);
+(function initPalette() {
+    // here is one 4-byte entry for each possible iteration value (r, g, b, alpha).
     let paramGen = () => 15 * (1 + 2 * Math.random());
     const [fRed, fGreen, fBlue] = [paramGen(), paramGen(), paramGen()];
     let ofs = 0;
     let d = 2 / ITER;
     let c = -1;
     for (i = 0; i < ITER; i++) {
-        buf[ofs++] = Math.sin(c * fRed) * 128 + 127;
-        buf[ofs++] = Math.sin(c * fGreen) * 128 + 127;
-        buf[ofs++] = Math.sin(c * fBlue) * 128 + 127;
-        buf[ofs++] = 0xff;
+        palette[ofs++] = Math.sin(c * fRed) * 128 + 127;
+        palette[ofs++] = Math.sin(c * fGreen) * 128 + 127;
+        palette[ofs++] = Math.sin(c * fBlue) * 128 + 127;
+        palette[ofs++] = 0xff;
         c += d;
     }
     // last entry for black (i=ITER)
-    buf[ofs++] = 0;
-    buf[ofs++] = 0;
-    buf[ofs++] = 0;
-    buf[ofs++] = 0xff;
-}
-initPalette();
+    palette[ofs++] = 0;
+    palette[ofs++] = 0;
+    palette[ofs++] = 0;
+    palette[ofs++] = 0xff;
+})();
 
 // history navigation
 navigateTo = rect => {
@@ -67,9 +67,10 @@ window.onpopstate = ev => mandel(ev.state);
 
 // initial frame
 window.onload = () => {
-    let [x0, y0] = [-2, -1.5];
-    let [x1, y1] = [1, 1.5];
-    WebAssembly.compileStreaming(fetch('mandel.wasm'))
+    const [x0, y0] = [-2, -1.5];
+    const [x1, y1] = [1, 1.5];
+    const wasmFile = 'mandel' + (hasSharedMem ? '-shmem' : '') + '.wasm';
+    WebAssembly.compileStreaming(fetch(wasmFile))
         .then(mod => {
             initWorkers(mod);
             navigateTo([x0, y0, x1, y1]);
@@ -134,9 +135,8 @@ mandel = rect => {
     container.ontouchend = selectionEnd;
 
     let paint = () => {
-        let buf = new Uint8ClampedArray(imgBuffer.buffer, paletteSize, imgSize);
         let imgData = new ImageData(N, N);
-        imgData.data.set(buf);
+        imgData.data.set(imgBuffer);
         ctx.putImageData(imgData, 0, 0);
     };
 
@@ -144,11 +144,14 @@ mandel = rect => {
     const startTime = performance.now();
     workerPool.forEach((worker, i) => {
         worker.onmessage = e => {
-            let [taskId, elapsed] = e.data;
+            let [taskId, buf, ofs, elapsed] = e.data;
             console.log("[t=", Math.round(performance.now() - startTime), "] worker", i,
                 ", task", taskId, " done in", Math.round(elapsed), "ms");
-            //const dst = new Uint8ClampedArray(imgBuffer, offset, bytesPerChunk);
-            //dst.set(srcBuf);
+            if (buf) {
+                // we are not using shared memory, so copy the output into the image buffer
+                const data = new Uint8ClampedArray(buf, paletteSize, bytesPerChunk);
+                imgBuffer.set(data, ofs - paletteSize);
+            }
             done++;
             if (done == numChunks) {
                 // all tasks have finished, draw the image
