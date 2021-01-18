@@ -62,8 +62,44 @@ let initWorkers = wasmModule => {
 navigateTo = rect => {
     history.pushState(rect, "Mandelbrot");
     mandel(rect);
-}
+};
 window.onpopstate = ev => mandel(ev.state);
+
+// run a performance benchmark
+benchmark = rect => {
+    const warmupRounds = 5;
+    const perfRounds = 20;
+
+    runPerf = n => {
+        return new Promise(done => {
+            const times = [];
+            let loop = i => {
+                if (i == 0) {
+                    done(times);
+                } else {
+                    const startRound = performance.now();
+                    compute(rect).then(() => {
+                        const elapsed = performance.now() - startRound;
+                        times.push(elapsed);
+                        console.log("round", i, "time", Math.round(elapsed), "ms");
+                        loop(i-1);
+                    });
+                }
+            };
+            loop(n);
+        });
+    };
+
+    runPerf(warmupRounds)
+        .then(() => runPerf(perfRounds))
+        .then(times => {
+            const n = times.length;
+            const mean = times.reduce((acc, val) => acc + val, 0) / n;
+            const stddev = Math.sqrt(times.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / n);
+            console.log("n=", perfRounds, "mean=", Math.round(mean), "ms", "stddev=", Math.round(stddev), "ms");
+        })
+        .then(paint);
+};
 
 // initial frame
 window.onload = () => {
@@ -73,7 +109,12 @@ window.onload = () => {
     WebAssembly.compileStreaming(fetch(wasmFile))
         .then(mod => {
             initWorkers(mod);
-            navigateTo([x0, y0, x1, y1]);
+            if (document.location.hash == '#perf') {
+                // append "#perf" to URL to run benchmark
+                benchmark([x0, y0, x1, y1]);
+            } else {
+                navigateTo([x0, y0, x1, y1]);
+            }
         });
 };
 
@@ -83,7 +124,6 @@ mandel = rect => {
     const posDiv = document.getElementById('pos');
     const selDiv = document.getElementById('sel');
     const container = document.getElementById('container');
-    const ctx = canvas.getContext('2d');
 
     const dx = (x1 - x0)/N;
     const dy = (y1 - y0)/N;
@@ -134,42 +174,50 @@ mandel = rect => {
     };
     container.ontouchend = selectionEnd;
 
-    let paint = () => {
-        let imgData = new ImageData(N, N);
-        imgData.data.set(imgBuffer);
-        ctx.putImageData(imgData, 0, 0);
-    };
+    compute(rect).then(paint);
+};
 
-    let done = 0;
-    const startTime = performance.now();
-    workerPool.forEach((worker, i) => {
-        worker.onmessage = e => {
-            let [taskId, buf, ofs, elapsed] = e.data;
-            console.log("[t=", Math.round(performance.now() - startTime), "] worker", i,
-                ", task", taskId, " done in", Math.round(elapsed), "ms");
-            if (buf) {
-                // we are not using shared memory, so copy the output into the image buffer
-                const data = new Uint8ClampedArray(buf, paletteSize, bytesPerChunk);
-                imgBuffer.set(data, ofs - paletteSize);
+paint = () => {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const imgData = new ImageData(N, N);
+    imgData.data.set(imgBuffer);
+    ctx.putImageData(imgData, 0, 0);
+};
+
+compute = rect => {
+    return new Promise(resolve => {
+        let [x0, y0, x1, y1] = rect;
+        const dx = (x1 - x0) / N;
+        const dy = (y1 - y0) / N;
+        let done = 0;
+        const startTime = performance.now();
+        workerPool.forEach((worker, i) => {
+            worker.onmessage = e => {
+                let [taskId, buf, ofs, elapsed] = e.data;
+                //console.log("[t=", Math.round(performance.now() - startTime), "] worker", i,
+                //    ", task", taskId, " done in", Math.round(elapsed), "ms");
+                if (buf) {
+                    // we are not using shared memory, so copy the output into the image buffer
+                    const data = new Uint8ClampedArray(buf, paletteSize, bytesPerChunk);
+                    imgBuffer.set(data, ofs - paletteSize);
+                }
+                done++;
+                if (done == numChunks) {
+                    resolve();
+                }
             }
-            done++;
-            if (done == numChunks) {
-                // all tasks have finished, draw the image
-                const t = performance.now();
-                console.log("computed in " + (t - startTime) / 1000 + "s");
-                paint();
-            }
+        });
+        let y = y1;
+        let ofs = paletteSize;
+        for (i = 0; i < numChunks; i++) {
+            let workerIdx = i % numWorkers;
+            let worker = workerPool[workerIdx];
+            worker.postMessage(['calc', [i, ofs, N, rowsPerChunk, x0, y, dx, dy, ITER]]);
+            y -= rowsPerChunk * dy;
+            ofs += bytesPerChunk;
         }
     });
-    let y = y1;
-    let ofs = paletteSize;
-    for (i = 0; i < numChunks; i++) {
-        let workerIdx = i % numWorkers;
-        let worker = workerPool[workerIdx];
-        worker.postMessage(['calc', [i, ofs, N, rowsPerChunk, x0, y, dx, dy, ITER]]);
-        y -= rowsPerChunk * dy;
-        ofs += bytesPerChunk;
-    }
-};
+}
 
 roundCoord = x => Math.round(x * 1000) / 1000;
