@@ -4,15 +4,7 @@ Simple web-based Mandelbrot set explorer. This was written as a fun teaching exe
 The design goals are speed and small code size, in that order.
 
 It uses web workers for parallelization, so you can put those CPU cores to use!
-The math code is written in WebAssembly.
-
-Due to the use of browser features like shared memory, it should work on these browsers:
-
-* Firefox 79+
-* Chrome 74+
-* Edge 79+
-
-(It does not work on Chrome Android yet.)
+The math code is written in WebAssembly. Shared memory is used where available.
 
 Try it out [here](https://dlbk35kw7uw7f.cloudfront.net/)!
 

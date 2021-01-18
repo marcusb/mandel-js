@@ -1,6 +1,6 @@
 (module
   ;; must specify max size, 64 pages = 1024x1024 pixels, plus 1 for palette
-  (memory (import "env" "buf") 1 65)
+  (memory (import "env" "buf") 1 65 shared)
   ;; repeated application of the function f(z) = z^2 + w for a single point w
   (func $iterate (param $x f64) (param $y f64) (param $maxIter i32) (result i32)
     (local $a f64)
