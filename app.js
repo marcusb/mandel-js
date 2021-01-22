@@ -1,3 +1,5 @@
+import { simd } from "https://unpkg.com/wasm-feature-detect?module";
+
 // feature detection
 console.log("has SharedArrayBuffer:", window.SharedArrayBuffer !== undefined);
 console.log("cross-origin isolated:", window.crossOriginIsolated);
@@ -29,7 +31,7 @@ const bytesPerChunk = 4 * N * rowsPerChunk;
 const workerPool = [];
 
 let initWorkers = wasmModule => {
-    for (i = 0; i < numWorkers; i++) {
+    for (let i = 0; i < numWorkers; i++) {
         let worker = new Worker("worker.js");
         worker.postMessage(['init', [wasmModule, hasSharedMem || palette, hasSharedMem && memory, bytesPerChunk]]);
         workerPool.push(worker);
@@ -44,7 +46,7 @@ let initWorkers = wasmModule => {
     let ofs = 0;
     let d = 2 / ITER;
     let c = -1;
-    for (i = 0; i < ITER; i++) {
+    for (let i = 0; i < ITER; i++) {
         palette[ofs++] = Math.sin(c * fRed) * 128 + 127;
         palette[ofs++] = Math.sin(c * fGreen) * 128 + 127;
         palette[ofs++] = Math.sin(c * fBlue) * 128 + 127;
@@ -59,18 +61,18 @@ let initWorkers = wasmModule => {
 })();
 
 // history navigation
-navigateTo = rect => {
+window.navigateTo = rect => {
     history.pushState(rect, "Mandelbrot");
     mandel(rect);
 };
-window.onpopstate = ev => mandel(ev.state);
+window.onpopstate = ev => ev.state && mandel(ev.state);
 
 // run a performance benchmark
-benchmark = rect => {
+window.benchmark = rect => {
     const warmupRounds = 5;
     const perfRounds = 20;
 
-    runPerf = n => {
+    let runPerf = n => {
         return new Promise(done => {
             const times = [];
             let loop = i => {
@@ -105,20 +107,24 @@ benchmark = rect => {
 window.onload = () => {
     const [x0, y0] = [-2, -1.5];
     const [x1, y1] = [1, 1.5];
-    const wasmFile = 'mandel' + (hasSharedMem ? '-shmem' : '') + '.wasm';
-    WebAssembly.compileStreaming(fetch(wasmFile))
-        .then(mod => {
-            initWorkers(mod);
-            if (document.location.hash == '#perf') {
-                // append "#perf" to URL to run benchmark
-                benchmark([x0, y0, x1, y1]);
-            } else {
-                navigateTo([x0, y0, x1, y1]);
-            }
+    simd().then(hasSimd => {
+        console.log("has SIMD:", hasSimd);
+        const wasmFile = 'mandel' +
+          (hasSharedMem ? (hasSimd ? '-simd' : '-shmem') : '') + '.wasm';
+        WebAssembly.compileStreaming(fetch(wasmFile))
+            .then(mod => {
+                initWorkers(mod);
+                if (document.location.hash == '#perf') {
+                    // append "#perf" to URL to run benchmark
+                    benchmark([x0, y0, x1, y1]);
+                } else {
+                    navigateTo([x0, y0, x1, y1]);
+                }
+            });
         });
 };
 
-mandel = rect => {
+window.mandel = rect => {
     let [x0, y0, x1, y1] = rect;
     const canvas = document.getElementById('canvas');
     const posDiv = document.getElementById('pos');
@@ -128,7 +134,7 @@ mandel = rect => {
     const dx = (x1 - x0)/N;
     const dy = (y1 - y0)/N;
 
-    coords = (x, y) => [x0 + x * dx, y1 - y * dy];
+    let coords = (x, y) => [x0 + x * dx, y1 - y * dy];
 
     // selection
     let selPos;
@@ -177,7 +183,7 @@ mandel = rect => {
     compute(rect).then(paint);
 };
 
-paint = () => {
+window.paint = () => {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const imgData = new ImageData(N, N);
@@ -185,7 +191,7 @@ paint = () => {
     ctx.putImageData(imgData, 0, 0);
 };
 
-compute = rect => {
+window.compute = rect => {
     return new Promise(resolve => {
         let [x0, y0, x1, y1] = rect;
         const dx = (x1 - x0) / N;
@@ -210,7 +216,7 @@ compute = rect => {
         });
         let y = y1;
         let ofs = paletteSize;
-        for (i = 0; i < numChunks; i++) {
+        for (let i = 0; i < numChunks; i++) {
             let workerIdx = i % numWorkers;
             let worker = workerPool[workerIdx];
             worker.postMessage(['calc', [i, ofs, N, rowsPerChunk, x0, y, dx, dy, ITER]]);
@@ -220,4 +226,4 @@ compute = rect => {
     });
 }
 
-roundCoord = x => Math.round(x * 1000) / 1000;
+window.roundCoord = x => Math.round(x * 1000) / 1000;

@@ -1,3 +1,4 @@
+;; Implementation without shared memory, with widest browser support
 (module
   ;; must specify max size, 64 pages = 1024x1024 pixels, plus 1 for palette
   (memory (import "env" "buf") 1 65)
