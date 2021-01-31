@@ -139,9 +139,7 @@
             (local.get $cols))))
       (local.set $y (f64.sub (local.get $y) (local.get $dy)))
       (br_if $nextRow
-        (i32.gt_u
-          (local.get $rows)
-          (i32.const 0))))
+        (local.get $rows)))
   )
   (export "mandel" (func $mandel))
 )
