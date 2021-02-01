@@ -198,7 +198,15 @@ window.compute = rect => {
         const dy = (y1 - y0) / N;
         let done = 0;
         const startTime = performance.now();
-        workerPool.forEach((worker, i) => {
+        let y = y1;
+        let ofs = paletteSize;
+        let nextChunk = 0;
+        let startTask = worker => {
+            worker.postMessage(['calc', [nextChunk++, ofs, N, rowsPerChunk, x0, y, dx, dy, ITER]]);
+            y -= rowsPerChunk * dy;
+            ofs += bytesPerChunk;
+        };
+        workerPool.forEach(worker => {
             worker.onmessage = e => {
                 let [taskId, buf, ofs, elapsed] = e.data;
                 //console.log("[t=", Math.round(performance.now() - startTime), "] worker", i,
@@ -211,18 +219,12 @@ window.compute = rect => {
                 done++;
                 if (done == numChunks) {
                     resolve();
+                } else if (nextChunk < numChunks) {
+                    startTask(worker);
                 }
             }
+            startTask(worker);
         });
-        let y = y1;
-        let ofs = paletteSize;
-        for (let i = 0; i < numChunks; i++) {
-            let workerIdx = i % numWorkers;
-            let worker = workerPool[workerIdx];
-            worker.postMessage(['calc', [i, ofs, N, rowsPerChunk, x0, y, dx, dy, ITER]]);
-            y -= rowsPerChunk * dy;
-            ofs += bytesPerChunk;
-        }
     });
 }
 
