@@ -11,27 +11,13 @@
     (local $i v128)
     (local $step v128)
     (local $maxIter2 v128)
-    ;; step is the iteration counter step size, initialize to (1, 0, 1, 0).
+    ;; step is the iteration counter step size, initialize to (1, 1).
     ;; Later we will zero out the component for which the iteration has escaped.
-    ;; We use lanes 0 and 2 so it matches up with the two wider f64x2 lanes,
-    ;; this simplifies some bit manipulations.
     (local.set $step
-      (i32x4.replace_lane
-        1
-        (i32x4.replace_lane
-          3
-          (i32x4.splat (i32.const 1))
-          (i32.const 0))
-        (i32.const 0)))
-    ;; (maxIter, 0, maxIter, 0)
+      (i64x2.splat (i64.const 1)))
+    ;; (maxIter, maxIter)
     (local.set $maxIter2
-      (i32x4.replace_lane
-        1
-        (i32x4.replace_lane
-          3
-          (i32x4.splat (local.get $maxIter))
-          (i32.const 0))
-        (i32.const 0)))
+      (i64x2.extend_low_i32x4_u (i32x4.splat (local.get $maxIter))))
     ;; z = a + bi
     ;; w = x + y i
     ;; The update is z := z^2 + w
@@ -74,16 +60,16 @@
         (v128.and (local.get $step)))
       ;; iteration counter update - this is a no-op for any lane that has finished.
       ;; i += step
-      (local.tee $i (i32x4.add (local.get $i)))
+      (local.tee $i (i64x2.add (local.get $i)))
       ;; Check max iterations reached and update step accordingly.
       (local.get $maxIter2)
-      (i32x4.lt_u)
+      (i64x2.lt_u)
       (local.tee $step (v128.and (local.get $step)))
       ;; loop if step is still non-zero
-      (br_if $top (i32x4.any_true)))
+      (br_if $top (v128.any_true)))
     (return
-      (i32x4.extract_lane 0 (local.get $i))
-      (i32x4.extract_lane 2 (local.get $i))))
+      (i64x2.extract_lane 0 (local.get $i))
+      (i64x2.extract_lane 1 (local.get $i))))
 
   (func $mandel
     (param $ofs i32)
