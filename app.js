@@ -1,10 +1,23 @@
-import { simd } from "https://unpkg.com/wasm-feature-detect?module";
-
 // feature detection
 console.log("has SharedArrayBuffer:", window.SharedArrayBuffer !== undefined);
 console.log("cross-origin isolated:", window.crossOriginIsolated);
 console.log("secure context:", window.isSecureContext);
 const hasSharedMem = window.crossOriginIsolated && window.SharedArrayBuffer !== undefined;
+
+const simdModule = new Uint8Array([
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x05, 0x01, 0x60,
+    0x00, 0x01, 0x7b, 0x03, 0x02, 0x01, 0x00, 0x0a, 0x0a, 0x01, 0x08, 0x00,
+    0x41, 0x00, 0xfd, 0x0f, 0xfd, 0x62, 0x0b
+]);
+const relaxedSimdModule = new Uint8Array([
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x05, 0x01, 0x60,
+    0x00, 0x01, 0x7b, 0x03, 0x02, 0x01, 0x00, 0x0a, 0x0f, 0x01, 0x0d, 0x00,
+    0x41, 0x01, 0xfd, 0x0f, 0x41, 0x02, 0xfd, 0x0f, 0xfd, 0x80, 0x02, 0x0b
+]);
+const hasSimd = WebAssembly.validate(simdModule);
+const hasRelaxedSimd = WebAssembly.validate(relaxedSimdModule);
+console.log("has SIMD:", hasSimd);
+console.log("has Relaxed SIMD:", hasRelaxedSimd);
 
 const N = 1024;
 const ITER = 1000;
@@ -107,20 +120,18 @@ window.benchmark = rect => {
 window.onload = () => {
     const [x0, y0] = [-2, -1.5];
     const [x1, y1] = [1, 1.5];
-    simd().then(hasSimd => {
-        console.log("has SIMD:", hasSimd);
-        const wasmFile = 'mandel' +
-          (hasSharedMem ? (hasSimd ? '-simd' : '-shmem') : '') + '.wasm';
-        WebAssembly.compileStreaming(fetch(wasmFile))
-            .then(mod => {
-                initWorkers(mod);
-                if (document.location.hash == '#perf') {
-                    // append "#perf" to URL to run benchmark
-                    benchmark([x0, y0, x1, y1]);
-                } else {
-                    navigateTo([x0, y0, x1, y1]);
-                }
-            });
+    const suffix = hasSharedMem ? (
+        hasRelaxedSimd ? "-relaxed-simd" : (hasSimd ? "-simd" : "-shmem")) : "";
+    const wasmFile = `mandel${suffix}.wasm`
+    WebAssembly.compileStreaming(fetch(wasmFile))
+        .then(mod => {
+            initWorkers(mod);
+            if (document.location.hash == '#perf') {
+                // append "#perf" to URL to run benchmark
+                benchmark([x0, y0, x1, y1]);
+            } else {
+                navigateTo([x0, y0, x1, y1]);
+            }
         });
 };
 
