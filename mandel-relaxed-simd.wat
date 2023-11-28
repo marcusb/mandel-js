@@ -33,9 +33,9 @@
         (f64x2.sub (local.get $aa) (local.get $bb))
         (local.get $x))
       (f64x2.relaxed_madd
-        (local.get $y)
         (f64x2.add (local.get $a) (local.get $a))
-        (local.get $b))
+        (local.get $b)
+        (local.get $y))
       ;; a^2 + b^2
       (local.set $bb
         (f64x2.mul
